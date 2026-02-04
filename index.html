@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trader Pro Terminal</title>
+    <style>
+        :root { --bg: #0b0e11; --card: #181a20; --accent: #f0b90b; --success: #0ecb81; --danger: #f6465d; --text: #eaecef; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .wrapper { width: 100%; max-width: 1200px; }
+        
+        #tv-chart { width: 100%; height: 500px; border-radius: 12px; overflow: hidden; border: 1px solid #2b3139; margin-bottom: 20px; }
+        
+        .panel { display: grid; grid-template-columns: 350px 1fr; gap: 20px; background: var(--card); padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        @media (max-width: 900px) { .panel { grid-template-columns: 1fr; } #tv-chart { height: 350px; } }
+
+        .controls select, .controls button { width: 100%; padding: 15px; border-radius: 8px; border: 1px solid #474d57; font-size: 16px; margin-top: 12px; }
+        .controls select { background: #2b3139; color: white; cursor: pointer; }
+        .controls button { background: var(--accent); color: black; font-weight: bold; border: none; cursor: pointer; transition: 0.3s; }
+        .controls button:hover { transform: translateY(-2px); opacity: 0.9; }
+
+        .analysis-card { background: #2b3139; padding: 25px; border-radius: 12px; display: none; border-left: 8px solid var(--accent); animation: fadeIn 0.4s; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 15px; margin-top: 20px; }
+        .box { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 10px; text-align: center; border: 1px solid #3c444e; }
+        .box small { display: block; color: #848e9c; font-size: 11px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
+        .box span { font-size: 18px; font-weight: bold; }
+
+        #comment-box { margin-top: 20px; padding: 15px; background: rgba(0,0,0,0.1); border-radius: 10px; border-left: 3px solid var(--accent); line-height: 1.6; font-size: 14px; }
+        #loading { display: none; text-align: center; color: var(--accent); font-weight: bold; padding: 15px; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <div id="tv-chart">
+        <div id="tradingview_widget" style="height:100%; width:100%"></div>
+    </div>
+
+    <div class="panel">
+        <div class="controls">
+            <h3 style="margin:0; color:var(--accent)">Varlık Seçimi</h3>
+            <select id="symbol" onchange="updateChart(this.value)">
+                <optgroup label="KRİPTO PARALAR">
+                    <option value="BINANCE:BTCUSDT">Bitcoin (BTC)</option>
+                    <option value="BINANCE:ETHUSDT">Ethereum (ETH)</option>
+                    <option value="BINANCE:SOLUSDT">Solana (SOL)</option>
+                    <option value="BINANCE:AVAXUSDT">Avalanche (AVAX)</option>
+                    <option value="BINANCE:XRPUSDT">Ripple (XRP)</option>
+                </optgroup>
+                <optgroup label="MADEN & EMTİA">
+                    <option value="XAUUSD">Altın (Ons)</option>
+                    <option value="XAGUSD">Gümüş (Ons)</option>
+                    <option value="UKOIL">Brent Petrol</option>
+                    <option value="USOIL">WTI Petrol</option>
+                    <option value="HG=F">Bakır</option>
+                </optgroup>
+                <optgroup label="ENDEKS & FOREX">
+                    <option value="US30">Dow Jones 30</option>
+                    <option value="NAS100">Nasdaq 100</option>
+                    <option value="EURUSD">EUR / USD</option>
+                    <option value="USDTRY">USD / TRY</option>
+                </optgroup>
+            </select>
+            <button id="btn" onclick="startAnalysis()">YAPAY ZEKA ANALİZİNİ BAŞLAT</button>
+            <div id="loading">📡 Veriler Gemini AI'ya gönderiliyor...</div>
+        </div>
+
+        <div id="resultCard" class="analysis-card">
+            <h2 id="resSignal" style="margin:0; font-size: 28px;">-</h2>
+            <div class="grid">
+                <div class="box"><small>Güven Oranı</small><span id="resConf">-</span></div>
+                <div class="box"><small>Kaldıraç</small><span id="resLev">-</span></div>
+                <div class="box"><small>Take Profit</small><span id="resTP" style="color:var(--success)">-</span></div>
+                <div class="box"><small>Stop Loss</small><span id="resSL" style="color:var(--danger)">-</span></div>
+            </div>
+            <div id="comment-box"></div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+<script>
+    function updateChart(symbol) {
+        new TradingView.widget({
+            "autosize": true, "symbol": symbol, "interval": "D", "timezone": "Etc/UTC",
+            "theme": "dark", "style": "1", "locale": "tr", "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false, "hide_side_toolbar": false, "allow_symbol_change": true,
+            "container_id": "tradingview_widget"
+        });
+    }
+    updateChart("BINANCE:BTCUSDT");
+
+    async function startAnalysis() {
+        const btn = document.getElementById('btn');
+        const loader = document.getElementById('loading');
+        const card = document.getElementById('resultCard');
+
+        btn.disabled = true;
+        loader.style.display = 'block';
+        card.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ symbol: document.getElementById('symbol').value })
+            });
+            const data = await response.json();
+
+            if(data.error) throw new Error(data.error);
+
+            // Verileri DOM'a bas
+            document.getElementById('resSignal').innerText = "SİNYAL: " + data.signal;
+            document.getElementById('resSignal').style.color = data.signal === 'BUY' ? 'var(--success)' : (data.signal === 'SELL' ? 'var(--danger)' : 'var(--accent)');
+            document.getElementById('resConf').innerText = "%" + data.confidence;
+            document.getElementById('resLev').innerText = data.leverage;
+            document.getElementById('resTP').innerText = data.take_profit;
+            document.getElementById('resSL').innerText = data.stop_loss;
+            document.getElementById('comment-box').innerText = data.comment;
+
+            card.style.display = 'block';
+            card.style.borderLeftColor = data.signal === 'BUY' ? 'var(--success)' : (data.signal === 'SELL' ? 'var(--danger)' : 'var(--accent)');
+        } catch (err) {
+            alert("Hata: " + err.message);
+        } finally {
+            btn.disabled = false;
+            loader.style.display = 'none';
+        }
+    }
+</script>
+</body>
+</html>
